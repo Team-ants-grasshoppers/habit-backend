@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 const connection = require('../config/database')
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -97,3 +97,63 @@ const generateAndSendToken = (user_id: string, nickname: string, res: Response) 
   });
   return res.status(200).json({ message: `${nickname}님, 소셜 로그인이 완료되었습니다.` });
 };
+
+
+export const memberWithdraw = (req: Request, res: Response) => {
+  if (!req.user || typeof req.user === 'string') {
+    return res.status(401).json({ message: '유효한 사용자 정보가 없습니다.' });
+  }
+
+  const { user_id } = req.user as JwtPayload;
+  const { password } = req.body;
+
+  if (!user_id) {
+    return res.status(404).json({ message: "존재하지 않는 계정입니다." });
+  }
+
+  try {
+    let sql = `
+            SELECT password
+            FROM Members
+            WHERE user_id = ?
+        `
+    const value = [user_id]
+    connection.query(sql, value, (err: any, results: any) => {
+      if (err) {
+        console.error("DB 조회 오류:", err);
+        return res.status(500).json({ message: "서버 오류 발생" });
+      }
+
+      // 사용자가 없는 경우
+      if (results.length === 0) {
+        return res.status(404).json({ message: "존재하지 않는 계정입니다." });
+      }
+
+      const hashedPassword = results[0].password
+      const isPasswordValid = bcrypt.compare(password, hashedPassword);
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: "비밀번호가 일치하지 않습니다." })
+      }
+    })
+
+    sql = `
+            DELETE FROM Members
+            WHERE user_id = ?;
+        `
+    connection.query(sql, value, (err: any, results: any) => {
+      if (err) {
+        console.error("회원 삭제 오류:", err);
+        return res.status(500).json({ message: "회원 삭제 중 오류 발생" });
+      }
+
+      if (results.affectedRows === 0) {
+        return res.status(404).json({ message: "존재하지 않는 계정입니다." });
+      }
+
+      return res.status(200).json({ message: "회원 탈퇴가 완료되었습니다." });
+    })
+  } catch (error) {
+    console.error("예상치 못한 오류:", error);
+    return res.status(500).json({ message: "서버 내부 오류 발생" });
+  }
+}

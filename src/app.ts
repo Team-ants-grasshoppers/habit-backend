@@ -25,9 +25,13 @@ app.use(passport.initialize());
 // JWT 전략 등록
 passport.use(jwtStrategy);
 
-const authRouter = require("./routes/auth")
+const authRouter = require("./routes/auth");
+const memberRouter = require("./routes/member");
+const clubRouter = require("./routes/club")
 
-app.use("/auth", authRouter)
+app.use("/auth", authRouter);
+app.use("/api/members", memberRouter);
+app.use("/api/clubs", clubRouter);
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {

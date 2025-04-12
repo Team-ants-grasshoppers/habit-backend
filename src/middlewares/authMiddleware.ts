@@ -16,7 +16,7 @@ export interface JwtPayload {
 export const validate = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    return res.status(400).json({ error: "필수 항목 누락" });
   }
   next();
 };

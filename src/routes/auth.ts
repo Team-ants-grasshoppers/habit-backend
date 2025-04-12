@@ -2,7 +2,7 @@ const express = require('express')
 const router = express.Router();
 const { check } = require('express-validator');
 import passport from 'passport';
-import { login, register, socialLoginCallback } from "../controllers/authController";
+import { login, memberWithdraw, register, socialLoginCallback } from "../controllers/authController";
 import { ensureAuthorization, validate } from "../middlewares/authMiddleware";
 
 router.use(express.json());
@@ -43,5 +43,8 @@ router.get('/logout', (req: any , res: any) => {
   res.clearCookie('token');
   res.status(200).json({ message: '로그아웃되었습니다.' });
 });
+
+// 탈퇴
+router.delete('/members', ensureAuthorization, memberWithdraw);
 
 module.exports = router;
