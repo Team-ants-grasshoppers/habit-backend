@@ -28,10 +28,14 @@ passport.use(jwtStrategy);
 const authRouter = require("./routes/auth");
 const memberRouter = require("./routes/member");
 const clubRouter = require("./routes/club")
+const imageRouter = require("./routes/image")
+const calendarRouter = require("./routes/calendar")
 
 app.use("/auth", authRouter);
 app.use("/api/members", memberRouter);
 app.use("/api/clubs", clubRouter);
+app.use("/api/upload-image", imageRouter)
+app.use("/api/calendar")
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {

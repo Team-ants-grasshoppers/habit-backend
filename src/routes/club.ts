@@ -1,7 +1,6 @@
 const express = require('express')
 const router = express.Router();
 const { check } = require('express-validator');
-import passport from 'passport';
 import { ensureAuthorization, validate } from "../middlewares/authMiddleware";
 import { createClub, joinClub, viewAllClub, viewClub, viewClubMember } from '../controllers/clubController';
 

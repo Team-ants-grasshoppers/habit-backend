@@ -8,9 +8,7 @@ export const getProfile = (req: Request, res: Response) => {
     if (!req.user || typeof req.user === 'string') {
         return res.status(401).json({ message: '인증되지 않은 사용자입니다.' });
     }
-
     const { user_id } = req.user as JwtPayload;
-
     if (!user_id) {
         return res.status(404).json({ message: "존재하지 않는 계정입니다." });
     }

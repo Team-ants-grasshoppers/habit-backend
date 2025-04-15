@@ -1,10 +1,12 @@
 const express = require('express')
 const router = express.Router();
-const { check } = require('express-validator');
-import { ensureAuthorization, validate } from "../middlewares/authMiddleware";
+import { uploadImage } from "../controllers/imageController";
+import { ensureAuthorization } from "../middlewares/authMiddleware";
+import multer from 'multer';
 
 router.use(express.json());
 
-router.post()
+const upload = multer({ storage: multer.memoryStorage() });
+router.post('/', ensureAuthorization, upload.single('img'), uploadImage)
 
 module.exports = router;
