@@ -35,7 +35,7 @@ app.use("/auth", authRouter);
 app.use("/api/members", memberRouter);
 app.use("/api/clubs", clubRouter);
 app.use("/api/upload-image", imageRouter)
-app.use("/api/calendar")
+app.use("/api/calendar", calendarRouter)
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {

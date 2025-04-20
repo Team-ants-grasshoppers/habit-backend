@@ -31,8 +31,8 @@ export const login = (req: Request, res: Response) => {
         );
         res.cookie('token', token, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'none',
+          secure: false,
+          sameSite: 'lax',
           maxAge: 7 * 24 * 60 * 60 * 1000,
         });
         return res.status(200).json({ message: `${loginUser.nickname}님, 로그인 되었습니다.` });
@@ -50,11 +50,11 @@ export const login = (req: Request, res: Response) => {
  * 회원가입 (Register)
  */
 export const register = async (req: Request, res: Response) => {
-  const { user_id, password, nickname } = req.body;
+  const { user_id, password, nickname, email } = req.body;
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const sql = "INSERT INTO Members (user_id, nickname, password, login_type) VALUES (?, ?, ?, ?)";
-    connection.query(sql, [user_id, nickname, hashedPassword, 'local'], (err: any, results: any) => {
+    const sql = "INSERT INTO Members (user_id, nickname, password, email, login_type) VALUES (?, ?, ?, ?, ?)";
+    connection.query(sql, [user_id, nickname, hashedPassword, email, 'local'], (err: any, results: any) => {
       if (err) {
         console.error("회원가입 오류:", err);
         return res.status(409).json({ message: "회원가입 중 중복된 아이디 혹은 오류 발생" });
@@ -91,8 +91,8 @@ const generateAndSendToken = (user_id: string, nickname: string, res: Response) 
   );
   res.cookie('token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'none',
+    secure: false,
+    sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
   return res.status(200).json({ message: `${nickname}님, 소셜 로그인이 완료되었습니다.` });

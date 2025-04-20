@@ -45,7 +45,7 @@ export const viewCalendar = (req: Request, res: Response) => {
 };
 
 // 일정 등록
-export const registerCalendar = (req: Request, res: Response) => {
+export const registerCalendar = async (req: Request, res: Response) => {
   if (!req.user || typeof req.user === 'string') {
     return res.status(401).json({ message: '인증되지 않은 사용자입니다.' });
   }
@@ -55,6 +55,11 @@ export const registerCalendar = (req: Request, res: Response) => {
   }
   const { club_id, thunder_id, title, description, event_date } = req.body;
   try {
+    const [rows] = await connection.promise().query(
+      `SELECT id FROM Members WHERE user_id = ?`,
+      user_id
+    )
+    const id = rows[0].id
     if (club_id != null) {
       // 해당 클럽의 생성자와 현재 회원이 일치하는지 확인
       const selectClubSql = "SELECT created_by FROM Clubs WHERE id = ?";
@@ -67,7 +72,7 @@ export const registerCalendar = (req: Request, res: Response) => {
           return res.status(404).json({ error: "해당 일정을 찾을 수 없습니다" });
         }
         const club = clubResults[0];
-        if (club.created_by !== user_id) {
+        if (club.created_by !== id) {
           return res.status(403).json({ error: "등록 권한이 없습니다" });
         }
 
@@ -76,7 +81,7 @@ export const registerCalendar = (req: Request, res: Response) => {
                            VALUES (?, ?, ?, ?, ?, ?)`;
         connection.query(
           insertSql,
-          [club_id, null, title, description, event_date, user_id],
+          [club_id, null, title, description, event_date, id],
           (insertErr: any, insertResults: any) => {
             if (insertErr) {
               console.error("일정 등록 INSERT 에러:", insertErr);
@@ -98,7 +103,7 @@ export const registerCalendar = (req: Request, res: Response) => {
           return res.status(404).json({ error: "해당 일정을 찾을 수 없습니다" });
         }
         const thunder = thunderResults[0];
-        if (thunder.created_by !== user_id) {
+        if (thunder.created_by !== id) {
           return res.status(403).json({ error: "등록 권한이 없습니다" });
         }
 
@@ -107,7 +112,7 @@ export const registerCalendar = (req: Request, res: Response) => {
                            VALUES (?, ?, ?, ?, ?, ?)`;
         connection.query(
           insertSql,
-          [null, thunder_id, title, description, event_date, user_id],
+          [null, thunder_id, title, description, event_date, id],
           (insertErr: any, insertResults: any) => {
             if (insertErr) {
               console.error("일정 등록 INSERT 에러:", insertErr);
@@ -128,11 +133,16 @@ export const registerCalendar = (req: Request, res: Response) => {
 };
 
 // 일정 수정
-export const modifyCalendar = (req: Request, res: Response) => {
+export const modifyCalendar = async (req: Request, res: Response) => {
   const { user_id } = req.user as JwtPayload;
   const { event_id } = req.params;
   const { title, description, event_date } = req.body;
   try {
+    const [rows] = await connection.promise().query(
+      `SELECT id FROM Members WHERE user_id = ?`,
+      user_id
+    )
+    const id = rows[0].id
     // 1. 해당 event_id의 일정 조회
     const selectSql = "SELECT created_by FROM CalendarEvents WHERE id = ?";
     connection.query(selectSql, [event_id], (selectErr: any, results: any) => {
@@ -147,7 +157,7 @@ export const modifyCalendar = (req: Request, res: Response) => {
 
       const event = results[0];
       // 2. 수정 권한 체크: 일정 생성자와 현재 회원이 일치하는지 확인
-      if (event.created_by !== user_id) {
+      if (event.created_by !== id) {
         return res.status(403).json({ error: "수정 권한이 없습니다" });
       }
 
@@ -165,14 +175,19 @@ export const modifyCalendar = (req: Request, res: Response) => {
     console.error("예상치 못한 오류:", error);
     return res.status(500).json({ error: "서버 오류" });
   }
-}
+};
 
 // 일정 삭제
-export const deleteCalendar = (req: Request, res: Response) => {
+export const deleteCalendar = async (req: Request, res: Response) => {
   const { user_id } = req.user as JwtPayload;
   const { event_id } = req.params;
 
   try {
+    const [rows] = await connection.promise().query(
+      `SELECT id FROM Members WHERE user_id = ?`,
+      user_id
+    )
+    const id = rows[0].id
     const selectSql = "SELECT created_by FROM CalendarEvents WHERE id = ?";
     connection.query(selectSql, [event_id], (selectErr: any, results: any) => {
       if (selectErr) {
@@ -185,7 +200,7 @@ export const deleteCalendar = (req: Request, res: Response) => {
 
       const calendarEvent = results[0];
       // 일정 생성자와 현재 사용자가 일치해야 함
-      if (calendarEvent.created_by !== user_id) {
+      if (calendarEvent.created_by !== id) {
         return res.status(403).json({ error: "삭제 권한이 없습니다" });
       }
 
@@ -202,4 +217,4 @@ export const deleteCalendar = (req: Request, res: Response) => {
     console.error("예상치 못한 오류:", error);
     return res.status(500).json({ error: "서버 오류" });
   }
-}
+};
