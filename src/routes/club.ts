@@ -2,7 +2,7 @@ const express = require('express')
 const router = express.Router();
 const { check } = require('express-validator');
 import { ensureAuthorization, validate } from "../middlewares/authMiddleware";
-import { createClub, joinClub, manageClubMember, viewAllClub, viewClub, viewClubMember } from '../controllers/clubController';
+import { banMemberClub, createClub, deleteClub, joinClub, manageClubMember, modifyClub, viewAllClub, viewClub, viewClubGallery, viewClubMember, withdrawClub } from '../controllers/clubController';
 
 router.use(express.json());
 
@@ -27,7 +27,19 @@ router.post('/:club_id/join', ensureAuthorization, joinClub);
 // 모임 회원 관리
 router.post('/:club_id/members/manage', ensureAuthorization, manageClubMember)
 
+// 모임 탈퇴
+router.delete('/:club_id/leave', ensureAuthorization, withdrawClub)
 
+// 모임 삭제
+router.delete('/:club_id', ensureAuthorization, deleteClub)
 
+// 모임 수정
+router.put('/:club_id', ensureAuthorization, modifyClub)
+
+// 모임 회원 추방
+router.delete('/:club_id/members/ban', ensureAuthorization, banMemberClub)
+
+// 모임 갤러리 조회
+router.get('/:club_id/gallery', ensureAuthorization, viewClubGallery)
 
 module.exports = router;

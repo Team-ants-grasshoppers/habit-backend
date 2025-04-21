@@ -5,7 +5,6 @@ import jwt, { JwtPayload } from 'jsonwebtoken';
 import dotenv from 'dotenv';
 dotenv.config();
 
-
 /**
  * 로컬 로그인 (Local Login)
  */
@@ -27,12 +26,12 @@ export const login = (req: Request, res: Response) => {
         const token = jwt.sign(
           { user_id: loginUser.user_id, nickname: loginUser.nickname },
           process.env.PRIVATE_KEY as string,
-          { expiresIn: '1h', issuer: 'pyeonhaeng' }
+          { expiresIn: '1h', issuer: 'habit' }
         );
         res.cookie('token', token, {
           httpOnly: true,
-          secure: false,
-          sameSite: 'lax',
+          secure: true,
+          sameSite: 'none',
           maxAge: 7 * 24 * 60 * 60 * 1000,
         });
         return res.status(200).json({ message: `${loginUser.nickname}님, 로그인 되었습니다.` });
@@ -87,12 +86,12 @@ const generateAndSendToken = (user_id: string, nickname: string, res: Response) 
   const token = jwt.sign(
     { user_id, nickname },
     process.env.PRIVATE_KEY as string,
-    { expiresIn: '1h', issuer: 'pyeonhaeng' }
+    { expiresIn: '1h', issuer: 'habit' }
   );
   res.cookie('token', token, {
     httpOnly: true,
-    secure: false,
-    sameSite: 'lax',
+    secure: true,
+    sameSite: 'none',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
   return res.status(200).json({ message: `${nickname}님, 소셜 로그인이 완료되었습니다.` });

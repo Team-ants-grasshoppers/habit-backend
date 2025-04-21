@@ -4,6 +4,7 @@ import { JwtPayload } from 'jsonwebtoken';
 import { FieldPacket } from 'mysql2';
 import dotenv from 'dotenv';
 import { ClubDetailRow } from '../models/clubDetailRow';
+import { ClubGalleryRow } from '../models/clubGalleryRow';
 dotenv.config();
 
 // 모임 생성
@@ -231,16 +232,18 @@ export const manageClubMember = async (req: Request, res: Response) => {
         if (adminRows.length === 0 || adminRows[0].role !== 'admin') {
             return res.status(403).json({ error: '운영자만 가능한 기능입니다' });
         }
-        // 상태값이 pending 일 시에만 처리
+
         const [pendingRows]: any[] = await connection
             .promise()
             .query(
                 'SELECT status FROM ClubMembers WHERE club_id = ? AND member_id = ?',
                 [clubId, target_member_id]
-            );
+        );
+        /*
         if (pendingRows.length === 0 || pendingRows[0].status !== 'pending') {
             return res.status(400).json({ error: '처리할 가입 요청이 없습니다' });
         }
+        */
 
         await connection
             .promise()
@@ -252,6 +255,193 @@ export const manageClubMember = async (req: Request, res: Response) => {
         return res.status(200).json({ message: '처리가 완료되었습니다' });
     } catch (err) {
         console.error('manageClubMember 오류:', err);
+        return res.status(500).json({ error: '서버 오류' });
+    }
+};
+
+// 모임 탈퇴
+export const withdrawClub = async (req: Request, res: Response) => {
+    if (!req.user || typeof req.user === 'string') {
+        return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
+    }
+    const { user_id } = req.user as JwtPayload;
+    const clubId = Number(req.params.club_id);
+    try {
+        const [memberRows]: any[] = await connection.promise().query(
+            'SELECT id FROM Members WHERE user_id = ?', [user_id]);
+        const memberId = memberRows[0].id;
+
+        const [existing]: any[] = await connection.promise().query(
+                'SELECT id FROM ClubMembers WHERE club_id = ? AND member_id = ?',
+                [clubId, memberId]
+            );
+        if (existing.length === 0) {
+            return res.status(400).json({ error: '모임에 가입된 사용자가 아닙니다' });
+        }
+
+        await connection.promise().query(
+                'DELETE FROM ClubMembers WHERE club_id = ? AND member_id = ?',
+                [clubId, memberId]
+            );
+        return res.status(200).json({ message: '모임에서 탈퇴하였습니다' });
+    } catch (err) {
+        console.error('서버 오류:', err);
+        return res.status(500).json({ error: '서버 오류' });
+    }
+};
+
+// 모임 삭제
+export const deleteClub = async (req: Request, res: Response) => {
+    if (!req.user || typeof req.user === 'string') {
+        return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
+    }
+    const { user_id } = req.user as JwtPayload;
+    const clubId = Number(req.params.club_id);
+    try {
+        const [memberRows]: any[] = await connection.promise().query(
+            'SELECT id FROM Members WHERE user_id = ?', [user_id]);
+        const memberId = memberRows[0].id;
+        const [clubRows]: any[] = await connection.promise().query(
+                'SELECT created_by FROM Clubs WHERE id = ?',
+                [clubId]
+            );
+        if (clubRows.length === 0) {
+            return res.status(404).json({ error: '모임을 찾을 수 없습니다' });
+        }
+        const creatorId = clubRows[0].created_by;
+        if (creatorId !== memberId) {
+            return res.status(403).json({ error: '모임 삭제 권한이 없습니다' });
+        }
+        await connection.promise().query(
+                'DELETE FROM Clubs WHERE id = ?',
+                [clubId]
+            );
+        return res.status(200).json({ message: '모임이 삭제되었습니다' });
+    } catch (err) {
+        console.error('서버 오류:', err);
+        return res.status(500).json({ error: '서버 오류' });
+    }
+};
+
+// 모임 수정
+export const modifyClub = async (req: Request, res: Response) => {
+    if (!req.user || typeof req.user === 'string') {
+        return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
+    }
+    const { user_id } = req.user as JwtPayload;
+    const clubId = Number(req.params.club_id);
+    const { name, description, category, region, image_id } = req.body;
+    try {
+        const [memberRows]: any[] = await connection.promise().query(
+            'SELECT id FROM Members WHERE user_id = ?', [user_id]);
+        const memberId = memberRows[0].id;
+        const [clubRows]: any[] = await connection
+            .promise()
+            .query('SELECT created_by FROM Clubs WHERE id = ?', [clubId]);
+        if (clubRows.length === 0) {
+            return res.status(404).json({ error: '모임을 찾을 수 없습니다' });
+        }
+        if (clubRows[0].created_by !== memberId) {
+            return res.status(403).json({ error: '수정 권한이 없습니다' });
+        }
+        await connection.promise().query(
+                `UPDATE Clubs
+                SET name = ?, description = ?, category = ?, region = ?
+                WHERE id = ?`,
+                [name, description, category, region, clubId]
+            );
+        await connection.promise().query(
+            'DELETE FROM ClubGallery WHERE club_id = ?', [clubId]);
+        await connection.promise().query(
+            `INSERT INTO ClubGallery (club_id, media_id) 
+            VALUES (?, ?)`,
+            [clubId, image_id]
+            );
+        return res.status(200).json({ message: '모임 정보가 수정되었습니다' });
+    } catch (err) {
+        console.error('서버 오류:', err);
+        return res.status(500).json({ error: '서버 오류' });
+    }
+};
+
+// 모임 회원 추방
+export const banMemberClub = async (req: Request, res: Response) => {
+    if (!req.user || typeof req.user === 'string') {
+        return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
+    }
+    const { user_id } = req.user as JwtPayload;
+    const clubId = Number(req.params.club_id);
+    const targetMemberId = Number(req.body.target_member_id);
+    try {
+        const [memberRows]: any[] = await connection.promise().query(
+            'SELECT id FROM Members WHERE user_id = ?', [user_id]);
+        const currentMemberId = memberRows[0].id;
+        const [adminRows]: any[] = await connection.promise().query(
+                'SELECT role FROM ClubMembers WHERE club_id = ? AND member_id = ?',
+                [clubId, currentMemberId]
+            );
+        if (adminRows.length === 0 || adminRows[0].role !== 'admin') {
+            return res.status(403).json({ error: '운영자만 가능한 기능입니다' });
+        }
+        await connection.promise().query(
+                'DELETE FROM ClubMembers WHERE club_id = ? AND member_id = ?',
+                [clubId, targetMemberId]
+            );
+        return res.status(200).json({ message: '추방 처리가 완료되었습니다' });
+    } catch (err) {
+        console.error('서버 오류:', err);
+        return res.status(500).json({ error: '서버 오류' });
+    }
+};
+
+// 모임 갤러리 조회
+export const viewClubGallery = async (req: Request, res: Response) => {
+    if (!req.user || typeof req.user === 'string') {
+        return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
+    }
+    const { user_id } = req.user as JwtPayload;
+    const clubId = Number(req.params.club_id);
+    try {
+        const [clubRows]: any[] = await connection
+            .promise()
+            .query('SELECT id FROM Clubs WHERE id = ?', [clubId]);
+        if (clubRows.length === 0) {
+            return res.status(404).json({ error: '모임을 찾을 수 없습니다' });
+        }
+        // 2) 쿼리 수행 후 타입 단언
+        const result = (await connection
+            .promise()
+            .query(
+                `
+        SELECT
+          media.media_type   AS type,
+          media.url,
+          media.uploaded_at,
+          m.user_id          AS created_by
+        FROM ClubGallery cg
+        JOIN Media media
+          ON cg.media_id = media.id
+        JOIN Members m
+          ON media.created_by = m.id
+        WHERE cg.club_id = ?
+        ORDER BY media.uploaded_at DESC
+        `,
+                [clubId]
+            )) as [ClubGalleryRow[], FieldPacket[]];
+
+        const rows = result[0];
+
+        // 3) 이제 r 은 ClubGalleryRow 타입이므로 암시적 any 오류 없음
+        const media = rows.map(r => ({
+            type: r.type,
+            url: r.url,
+            uploaded_at: r.uploaded_at.toISOString(),
+            created_by: r.created_by,
+        }));
+
+        return res.status(200).json({ media });
+    } catch (err) {
+        console.error('서버 오류:', err);
         return res.status(500).json({ error: '서버 오류' });
     }
 };
