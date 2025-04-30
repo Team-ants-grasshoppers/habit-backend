@@ -218,3 +218,51 @@ export const deleteCalendar = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "서버 오류" });
   }
 };
+
+// 내 개인 캘린더 조회
+export const getMyCalendar = async (req: Request, res: Response) => {
+  const { user_id } = req.user as JwtPayload;
+
+  try {
+    const [memberRows]: any[] = await connection
+      .promise()
+      .query('SELECT id FROM Members WHERE user_id = ?', [user_id]);
+    if (memberRows.length === 0) {
+      return res.status(401).json({ error: '미인증 사용자' });
+    }
+    const memberId = memberRows[0].id;
+
+    const sql = `
+      SELECT
+        ce.id                                   AS event_id,
+        ce.title,
+        ce.description,
+        DATE_FORMAT(ce.event_date, '%Y-%m-%d') AS event_date
+      FROM CalendarEvents ce
+      WHERE
+        ce.club_id   IN (
+          SELECT club_id
+          FROM ClubMembers
+          WHERE member_id = ? AND status = 'approve'
+        )
+        OR
+        ce.thunder_id IN (
+          SELECT thunder_id
+          FROM ThunderMembers
+          WHERE member_id = ? AND status = 'approved'
+        )
+      ORDER BY ce.event_date
+    `;
+    const [rows]: any[] = await connection
+      .promise()
+      .query(sql, [memberId, memberId]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: '등록된 일정이 없습니다' });
+    }
+
+    return res.status(200).json({ events: rows });
+  } catch (err) {
+    console.error('getMyCalendar 오류:', err);
+    return res.status(500).json({ error: '서버 오류' });
+  }
+};

@@ -16,10 +16,10 @@ router.post('/', ensureAuthorization, [
 router.get('/', viewAllClub);
 
 // 모임 리스트 상세 조회
-router.get('/:club_id', viewClub);
+router.get('/:club_id', ensureAuthorization, viewClub);
 
 // 모임 회원 조회
-router.get('/:club_id/members', viewClubMember);
+router.get('/:club_id/members', ensureAuthorization, viewClubMember);
 
 // 모임 가입
 router.post('/:club_id/join', ensureAuthorization, joinClub);

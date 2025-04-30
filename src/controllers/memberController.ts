@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 const connection = require('../config/database');
 import { JwtPayload } from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 
 export const getProfile = async (req: Request, res: Response) => {
   if (!req.user || typeof req.user === 'string') {
@@ -33,5 +34,121 @@ export const getProfile = async (req: Request, res: Response) => {
   } catch (err) {
     console.error('DB 조회 오류:', err);
     return res.status(500).json({ error: '서버 내부 오류' });
+  }
+};
+
+// 내 정보 수정
+export const updateProfile = async (req: Request, res: Response) => {
+  const { user_id } = req.user as JwtPayload;
+
+  const {
+    nickname,
+    profile_image,   // Media.id (문자열 혹은 숫자)
+    password,        // 기존 비밀번호
+    email,
+    region,
+    interest,
+  } = req.body;
+
+  try {
+    const [rows]: any[] = await connection
+      .promise()
+      .query(
+        `SELECT id, password 
+           FROM Members 
+          WHERE user_id = ?`,
+        [user_id]
+      );
+    if (rows.length === 0) {
+      return res.status(401).json({ error: '미인증 사용자' });
+    }
+    const member = rows[0];
+
+    const ok = await bcrypt.compare(password, member.password);
+    if (!ok) {
+      return res.status(401).json({ error: '기존 비밀번호 불일치' });
+    }
+
+    const [dup]: any[] = await connection
+      .promise()
+      .query(
+        `SELECT id 
+           FROM Members 
+          WHERE nickname = ? 
+            AND user_id != ?`,
+        [nickname, user_id]
+      );
+    if (dup.length > 0) {
+      return res.status(409).json({ error: '이미 사용중인 닉네임입니다' });
+    }
+
+    await connection
+      .promise()
+      .query(
+        `UPDATE Members
+            SET nickname = ?,
+                email    = ?,
+                region   = ?,
+                interests       = ?,
+                profile_media_id = ?
+          WHERE user_id = ?`,
+        [nickname, email, region, interest, profile_image, user_id]
+      );
+
+    return res.status(200).json({ message: '회원정보 수정 성공' });
+  } catch (err) {
+    console.error('updateProfile 오류:', err);
+    return res.status(500).json({ error: '서버 내부 오류' });
+  }
+};
+
+// 내 모임 관리 조회
+export const getMyClubs = async (req: Request, res: Response) => {
+  const { user_id } = req.user as JwtPayload;
+
+  try {
+    const [memberRows]: any[] = await connection
+      .promise()
+      .query('SELECT id FROM Members WHERE user_id = ?', [user_id]);
+    if (memberRows.length === 0) {
+      return res.status(401).json({ error: '미인증 사용자' });
+    }
+    const memberId = memberRows[0].id;
+
+    const [managed]: any[] = await connection
+      .promise()
+      .query(
+        `SELECT
+           c.id   AS club_id,
+           c.name,
+           cm.role
+         FROM ClubMembers cm
+         JOIN Clubs c
+           ON c.id = cm.club_id
+         WHERE cm.member_id = ? AND cm.role = 'admin'`,
+        [memberId]
+      );
+
+    const [joined]: any[] = await connection
+      .promise()
+      .query(
+        `SELECT
+           c.id   AS club_id,
+           c.name,
+           cm.role
+         FROM ClubMembers cm
+         JOIN Clubs c
+           ON c.id = cm.club_id
+         WHERE cm.member_id = ? AND cm.role = 'member'`,
+        [memberId]
+      );
+
+    return res.status(200).json({
+      managed_clubs: managed,
+      joined_clubs: joined,
+    });
+  } catch (err) {
+    console.error('getMyClubs 오류:', err);
+    return res.status(500).json({ error: '서버 오류' });
   }
 };

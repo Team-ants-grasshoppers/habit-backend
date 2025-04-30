@@ -296,3 +296,215 @@ export const deleteThunder = async (req: Request, res: Response) => {
   }
 };
 
+// 번개모임 수정
+export const modifyThunder = async (req: Request, res: Response) => {
+  // 1) 인증 확인
+  if (!req.user || typeof req.user === 'string') {
+    return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
+  }
+  const { user_id } = req.user as JwtPayload;
+
+  // 2) 파라미터 및 바디 파싱
+  const thunderId = Number(req.params.thunder_id);
+  const { title, description, region, date, id: imageId } = req.body;
+
+  try {
+    const [memberRows]: any[] = await connection
+      .promise()
+      .query('SELECT id FROM Members WHERE user_id = ?', [user_id]);
+    if (memberRows.length === 0) {
+      return res.status(403).json({ error: '수정 권한이 없습니다' });
+    }
+    const memberId = memberRows[0].id;
+
+    const [thunderRows]: any[] = await connection
+      .promise()
+      .query('SELECT created_by FROM ThunderMeetings WHERE id = ?', [thunderId]);
+    if (thunderRows.length === 0) {
+      return res.status(403).json({ error: '수정 권한이 없습니다' });
+    }
+    const creatorId = thunderRows[0].created_by;
+
+    let isAuthorized = creatorId === memberId;
+    if (!isAuthorized) {
+      const [adminRows]: any[] = await connection
+        .promise()
+        .query(
+          `SELECT id FROM ThunderMembers 
+           WHERE thunder_id = ? AND member_id = ? AND role = 'admin'`,
+          [thunderId, memberId]
+        );
+      isAuthorized = adminRows.length > 0;
+    }
+    if (!isAuthorized) {
+      return res.status(403).json({ error: '수정 권한이 없습니다' });
+    }
+
+    const [y, m, d, h, mi] = date.split('-');
+    const meetingDatetime = `${y}-${m}-${d} ${h}:${mi}:00`;
+
+    await connection
+      .promise()
+      .query(
+        `UPDATE ThunderMeetings
+            SET title = ?, description = ?, region = ?, meeting_datetime = ?
+          WHERE id = ?`,
+        [title, description, region, meetingDatetime, thunderId]
+      );
+
+    await connection
+      .promise()
+      .query('DELETE FROM ThunderMeetingMedia WHERE thunder_id = ?', [thunderId]);
+    await connection
+      .promise()
+      .query(
+        `INSERT INTO ThunderMeetingMedia (thunder_id, media_id)
+         VALUES (?, ?)`,
+        [thunderId, imageId]
+      );
+    return res.status(200).json({ message: '번개모임 수정 완료' });
+  } catch (err) {
+    console.error('modifyThunder 오류:', err);
+    return res.status(500).json({ error: '서버 오류' });
+  }
+};
+
+// 번개모임 회원 조회
+export const viewThunderMembers = async (req: Request, res: Response) => {
+  const thunderId = Number(req.params.thunder_id);
+
+  try {
+    const [thunderRows]: any[] = await connection
+      .promise()
+      .query(
+        'SELECT id FROM ThunderMeetings WHERE id = ?',
+        [thunderId]
+      );
+    if (thunderRows.length === 0) {
+      return res.status(404).json({ error: '모임을 찾을 수 없습니다' });
+    }
+    const [members]: any[] = await connection
+      .promise()
+      .query(
+        `
+        SELECT
+          m.id       AS member_id,
+          m.nickname,
+          tm.role
+        FROM ThunderMembers tm
+        JOIN Members m
+          ON tm.member_id = m.id
+        WHERE tm.thunder_id = ?
+        `,
+        [thunderId]
+      );
+
+    return res.status(200).json({ members });
+  } catch (err) {
+    console.error('viewThunderMembers 오류:', err);
+    return res.status(500).json({ error: '서버 오류' });
+  }
+};
+
+// 번개모임 회원 추방
+export const banThunderMember = async (req: Request, res: Response) => {
+  const { user_id } = req.user as JwtPayload;
+  const thunderId = Number(req.params.thunder_id);
+  const targetMemberId = Number(req.body.target_member_id);
+
+  try {
+    const [memberRows]: any[] = await connection
+      .promise()
+      .query('SELECT id FROM Members WHERE user_id = ?', [user_id]);
+    const currentMemberId = memberRows[0].id;
+
+    const [thunderRows]: any[] = await connection
+      .promise()
+      .query(
+        'SELECT created_by FROM ThunderMeetings WHERE id = ?',
+        [thunderId]
+      );
+    if (thunderRows.length === 0) {
+      return res.status(404).json({ error: '번개모임을 찾을 수 없습니다' });
+    }
+    const creatorId = thunderRows[0].created_by;
+
+    let isAuthorized = creatorId === currentMemberId;
+    if (!isAuthorized) {
+      const [adminRows]: any[] = await connection
+        .promise()
+        .query(
+          `SELECT id FROM ThunderMembers
+           WHERE thunder_id = ? AND member_id = ? AND role = 'admin'`,
+          [thunderId, currentMemberId]
+        );
+      isAuthorized = adminRows.length > 0;
+    }
+    if (!isAuthorized) {
+      return res.status(403).json({ error: '운영자만 가능한 기능입니다' });
+    }
+
+    const [existing]: any[] = await connection
+      .promise()
+      .query(
+        'SELECT id FROM ThunderMembers WHERE thunder_id = ? AND member_id = ?',
+        [thunderId, targetMemberId]
+      );
+    if (existing.length === 0) {
+      return res.status(400).json({ error: '가입되지 않은 번개모임입니다' });
+    }
+
+    await connection
+      .promise()
+      .query(
+        'DELETE FROM ThunderMembers WHERE thunder_id = ? AND member_id = ?',
+        [thunderId, targetMemberId]
+      );
+
+    return res.status(200).json({ message: '추방 처리가 완료되었습니다' });
+  } catch (err) {
+    console.error('banThunderMember 오류:', err);
+    return res.status(500).json({ error: '서버 오류' });
+  }
+};
+
+// 내가 참여 중인 번개모임 조회
+export const getMyThunders = async (req: Request, res: Response) => {
+  const { user_id } = req.user as JwtPayload;
+
+  try {
+    const [memberRows]: any[] = await connection
+      .promise()
+      .query('SELECT id FROM Members WHERE user_id = ?', [user_id]);
+    if (memberRows.length === 0) {
+      return res.status(401).json({ error: '미인증 사용자' });
+    }
+    const memberId = memberRows[0].id;
+
+    const sql = `
+      SELECT
+        t.id AS thunder_id,
+        t.title AS name,
+        (
+          SELECT m.url
+          FROM ThunderMeetingMedia tmm
+          JOIN Media m ON m.id = tmm.media_id
+          WHERE tmm.thunder_id = t.id
+          LIMIT 1
+        ) AS img_url
+      FROM ThunderMembers tm
+      JOIN ThunderMeetings t
+        ON tm.thunder_id = t.id
+      WHERE tm.member_id = ?
+        AND tm.status = 'approved'
+    `;
+    const [rows]: any[] = await connection
+      .promise()
+      .query(sql, [memberId]);
+    
+    return res.status(200).json(rows);
+  } catch (err) {
+    console.error('getMyThunders 오류:', err);
+    return res.status(500).json({ error: '서버 오류' });
+  }
+};
