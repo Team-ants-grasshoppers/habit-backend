@@ -14,7 +14,7 @@ router.post('/', [
     check('region').notEmpty(),
     check('time').notEmpty(),
     check('img_id').notEmpty(),
-], createThunderMeeting);
+], ensureAuthorization, createThunderMeeting);
 
 // 번개 모임 리스트
 router.get('/', listThunders);

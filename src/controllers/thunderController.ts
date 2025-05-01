@@ -7,17 +7,17 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const createThunderMeeting = async (req: Request, res: Response) => {
-  if (!req.user || typeof req.user === 'string') {
-    return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
-  }
   const { user_id } = req.user as JwtPayload;
   const { title, description, category, region, time, img_id } = req.body;
+
   try {
     const [memberRows]: any[] = await connection
       .promise()
       .query('SELECT id FROM Members WHERE user_id = ?', [user_id]);
+    if (memberRows.length === 0) {
+      return res.status(404).json({ error: '존재하지 않는 계정입니다' });
+    }
     const memberId = memberRows[0].id;
-
     const [result]: any = await connection
       .promise()
       .query(
@@ -27,7 +27,6 @@ export const createThunderMeeting = async (req: Request, res: Response) => {
         [title, description, category, region, time, memberId]
       );
     const thunderId = result.insertId;
-
     await connection
       .promise()
       .query(
@@ -36,12 +35,19 @@ export const createThunderMeeting = async (req: Request, res: Response) => {
          VALUES (?, ?)`,
         [thunderId, img_id]
       );
-
+    await connection
+      .promise()
+      .query(
+        `INSERT INTO ThunderMembers
+           (thunder_id, member_id, role, status)
+         VALUES (?, ?, 'admin', 'approved')`,
+        [thunderId, memberId]
+      );
     return res.status(200).json({
       thunder_id: thunderId,
       message: '번개모임 생성 성공'
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('createThunderMeeting 오류:', err);
     return res.status(500).json({ error: '서버 오류' });
   }
@@ -166,9 +172,6 @@ export const getThunderDetail = async (req: Request, res: Response) => {
 
 // 번개모임 가입 신청
 export const joinThunder = async (req: Request, res: Response) => {
-    if (!req.user || typeof req.user === 'string') {
-        return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
-    }
     const { user_id } = req.user as JwtPayload;
 
     const thunderId = Number(req.params.thunder_id);
@@ -207,9 +210,6 @@ export const joinThunder = async (req: Request, res: Response) => {
 
 // 번개모임 탈퇴
 export const withdrawThunder = async (req: Request, res: Response) => {
-  if (!req.user || typeof req.user === 'string') {
-    return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
-  }
   const { user_id } = req.user as JwtPayload;
   const thunderId = Number(req.params.thunder_id);
   try {
@@ -243,9 +243,6 @@ export const withdrawThunder = async (req: Request, res: Response) => {
 
 // 번개모임 삭제
 export const deleteThunder = async (req: Request, res: Response) => {
-  if (!req.user || typeof req.user === 'string') {
-    return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
-  }
   const { user_id } = req.user as JwtPayload;
   const thunderId = Number(req.params.thunder_id);
 
@@ -298,10 +295,6 @@ export const deleteThunder = async (req: Request, res: Response) => {
 
 // 번개모임 수정
 export const modifyThunder = async (req: Request, res: Response) => {
-  // 1) 인증 확인
-  if (!req.user || typeof req.user === 'string') {
-    return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
-  }
   const { user_id } = req.user as JwtPayload;
 
   // 2) 파라미터 및 바디 파싱
@@ -372,7 +365,6 @@ export const modifyThunder = async (req: Request, res: Response) => {
 // 번개모임 회원 조회
 export const viewThunderMembers = async (req: Request, res: Response) => {
   const thunderId = Number(req.params.thunder_id);
-
   try {
     const [thunderRows]: any[] = await connection
       .promise()
