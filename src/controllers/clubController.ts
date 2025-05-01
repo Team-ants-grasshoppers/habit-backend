@@ -9,77 +9,109 @@ dotenv.config();
 
 // 모임 생성
 export const createClub = async (req: Request, res: Response) => {
-    if (!req.user || typeof req.user === 'string') {
-        return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
+  const { user_id } = req.user as JwtPayload;
+  const { name, description, category, region, image_id } = req.body;
+
+  try {
+    const [memberRows]: any[] = await connection
+      .promise()
+      .query('SELECT id FROM Members WHERE user_id = ?', [user_id]);
+    if (memberRows.length === 0) {
+      return res.status(404).json({ error: '존재하지 않는 계정입니다' });
     }
-    const { user_id } = req.user as JwtPayload;
-    const { name, description, category, region, image_id } = req.body;
-    try {
-        const [memberRows]: any[] = await connection
-            .promise()
-            .query('SELECT id FROM Members WHERE user_id = ?', [user_id]);
+    const memberId = memberRows[0].id;
 
-        const member = memberRows[0];
-        const memberId = member.id;
-
-        const [clubResult]: any[] = await connection
-            .promise()
-            .query(
-                `INSERT INTO Clubs (name, description, category, region, created_by)
+    const [clubResult]: any[] = await connection
+      .promise()
+      .query(
+        `INSERT INTO Clubs (name, description, category, region, created_by)
          VALUES (?, ?, ?, ?, ?)`,
-                [name, description, category, region, memberId]
-            );
+        [name, description, category, region, memberId]
+      );
+    const newClubId = clubResult.insertId;
 
-        const newClubId = clubResult.insertId;
-        await connection
-            .promise()
-            .query(
-                `INSERT INTO ClubGallery (club_id, media_id)
+    await connection
+      .promise()
+      .query(
+        `INSERT INTO ClubGallery (club_id, media_id)
          VALUES (?, ?)`,
-                [newClubId, image_id]
-            );
-        return res.status(200).json({ message: '모임 생성 성공' });
-    } catch (err: any) {
-        console.error('모임 생성 오류:', err);
-        if (err.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ error: '이미 존재하는 모임 이름입니다' });
-        }
-        return res.status(500).json({ error: '서버 오류' });
+        [newClubId, image_id]
+      );
+
+    await connection
+      .promise()
+      .query(
+        `INSERT INTO ClubMembers (club_id, member_id, role, status)
+         VALUES (?, ?, 'admin', 'approve')`,
+        [newClubId, memberId]
+      );
+
+    return res.status(200).json({ message: '모임 생성 성공' });
+  } catch (err: any) {
+    console.error('모임 생성 오류:', err);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: '이미 존재하는 모임 이름입니다' });
     }
+    return res.status(500).json({ error: '서버 오류' });
+  }
 };
 
-// 모임 리스트 조회
 export const viewAllClub = async (req: Request, res: Response) => {
-    const { category, region } = req.query;
-    try {
-        let sql = ""
-        let params: any[] = [];
-        
-        if (category && region) { // 둘 다 있는 경우
-            sql = "SELECT id AS club_id, name, category FROM Clubs WHERE category = ? AND region = ?";
-            params.push(category, region);
-        } else if (category && !region) { // 카테고리만 있는 경우
-            sql = "SELECT id AS club_id, name, category FROM Clubs WHERE category = ?";
-            params.push(category);
-        } else if (!category && region) { // 리전만 있는 경우
-            sql = "SELECT id AS club_id, name, category FROM Clubs WHERE region = ?";
-            params.push(region);
-        } else { // 둘 다 없는 경우
-            sql = "SELECT id AS club_id, name, category FROM Clubs";
-        }
-        
-        const [clubs]: any = await connection.promise().query(sql, params);
+  const { category, region } = req.query;
+  try {
+    // 1) Clubs 당 하나씩, background 이미지 URL 만 서브쿼리로
+    let sql = `
+      SELECT
+        c.id         AS club_id,
+        c.name,
+        c.category,
+        (
+          SELECT m.url
+          FROM ClubGallery cg2
+          JOIN Media m
+            ON m.id = cg2.media_id
+           AND m.media_usage_type = 'background'
+          WHERE cg2.club_id = c.id
+          ORDER BY cg2.uploaded_at DESC
+          LIMIT 1
+        ) AS imgUrl
+      FROM Clubs c
+    `;
 
-        if (!clubs || clubs.length === 0) {
-            return res.status(404).json({ error: "조건에 맞는 모임이 없습니다" });
-        }
-
-        return res.status(200).json({ clubs });
-
-    } catch (error) {
-        console.error("예상치 못한 오류:", error);
-        return res.status(500).json({ message: "서버 오류" });
+    // 2) 동적 WHERE
+    const conditions: string[] = [];
+    const params: any[] = [];
+    if (category) {
+      conditions.push('c.category = ?');
+      params.push(category);
     }
+    if (region) {
+      conditions.push('c.region = ?');
+      params.push(region);
+    }
+    if (conditions.length) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    // 3) 실행
+    const [rows]: any[] = await connection.promise().query(sql, params);
+
+    // 4) 결과 없으면 404
+    if (!rows.length) {
+      return res.status(404).json({ error: '조건에 맞는 모임이 없습니다' });
+    }
+
+    // 5) 응답
+    return res.status(200).json({ clubs: rows as Array<{
+      club_id: number;
+      name: string;
+      category: string;
+      imgUrl: string | null;
+    }> });
+  } catch (err) {
+    console.error('viewAllClub 오류:', err);
+    return res.status(500).json({ error: '서버 오류' });
+  }
 };
 
 // 모임 상세 조회
