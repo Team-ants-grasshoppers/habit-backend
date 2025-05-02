@@ -4,9 +4,6 @@ import { JwtPayload } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
 export const getProfile = async (req: Request, res: Response) => {
-  if (!req.user || typeof req.user === 'string') {
-    return res.status(401).json({ error: '인증되지 않은 사용자입니다' });
-  }
   const { user_id } = req.user as JwtPayload;
 
   try {
@@ -17,11 +14,15 @@ export const getProfile = async (req: Request, res: Response) => {
         m.email,
         m.region,
         m.interests AS interest,
-        media.url AS profileImageUrl
+        (
+          SELECT url
+          FROM Media
+          WHERE created_by = m.id
+            AND media_usage_type = 'profile'
+          ORDER BY uploaded_at DESC
+          LIMIT 1
+        ) AS profileImageUrl
       FROM Members AS m
-      LEFT JOIN Media AS media
-        ON media.created_by = m.id
-       AND media.media_usage_type = 'profile'
       WHERE m.user_id = ?
     `;
     const [rows]: any[] = await connection.promise().query(sql, [user_id]);
