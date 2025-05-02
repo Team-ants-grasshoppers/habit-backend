@@ -43,8 +43,8 @@ export const updateProfile = async (req: Request, res: Response) => {
 
   const {
     nickname,
-    profile_image,   // Media.id (문자열 혹은 숫자)
-    password,        // 기존 비밀번호
+    profile_image,   // Media.id
+    password,        // 새로 설정할 비밀번호
     email,
     region,
     interest,
@@ -54,47 +54,38 @@ export const updateProfile = async (req: Request, res: Response) => {
     const [rows]: any[] = await connection
       .promise()
       .query(
-        `SELECT id, password 
-           FROM Members 
-          WHERE user_id = ?`,
+        `SELECT id FROM Members WHERE user_id = ?`,
         [user_id]
       );
     if (rows.length === 0) {
       return res.status(401).json({ error: '미인증 사용자' });
     }
-    const member = rows[0];
-
-    const ok = await bcrypt.compare(password, member.password);
-    if (!ok) {
-      return res.status(401).json({ error: '기존 비밀번호 불일치' });
-    }
+    const memberId = rows[0].id;
 
     const [dup]: any[] = await connection
       .promise()
       .query(
-        `SELECT id 
-           FROM Members 
-          WHERE nickname = ? 
-            AND user_id != ?`,
-        [nickname, user_id]
+        `SELECT id FROM Members WHERE nickname = ? AND id != ?`,
+        [nickname, memberId]
       );
     if (dup.length > 0) {
       return res.status(409).json({ error: '이미 사용중인 닉네임입니다' });
     }
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     await connection
       .promise()
       .query(
         `UPDATE Members
-            SET nickname = ?,
-                email    = ?,
-                region   = ?,
-                interests       = ?,
-                profile_media_id = ?
-          WHERE user_id = ?`,
-        [nickname, email, region, interest, profile_image, user_id]
+           SET nickname         = ?,
+               email            = ?,
+               region           = ?,
+               interests        = ?,
+               profile_media_id = ?,
+               password         = ?
+         WHERE user_id = ?`,
+        [nickname, email, region, interest, profile_image, hashedPassword, user_id]
       );
-
     return res.status(200).json({ message: '회원정보 수정 성공' });
   } catch (err) {
     console.error('updateProfile 오류:', err);
